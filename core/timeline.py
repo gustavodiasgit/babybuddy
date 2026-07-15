@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-from datetime import timedelta
+from datetime import datetime, timedelta
+from typing import Any, NotRequired, TypedDict
 
 from django.urls import reverse
 from django.utils import timezone, timesince
@@ -15,6 +16,93 @@ from core.models import (
     Medication,
 )
 from core.utils import duration_string
+
+
+class TimelineEvent(TypedDict):
+    """Estrutura compartilhada pelos eventos exibidos na timeline."""
+
+    time: datetime
+    details: list[str]
+    edit_link: str
+    model_name: str
+    tags: Any
+    event: NotRequired[str]
+    type: NotRequired[str | None]
+    duration: NotRequired[str]
+    time_since_prev: NotRequired[str | None]
+
+
+def _build_timeline_event(
+    instance,
+    event_time,
+    message,
+    details,
+    edit_link,
+    *,
+    event_type=None,
+    duration=None,
+    time_since_prev=None,
+    include_time_since_prev=False,
+) -> TimelineEvent:
+    """Cria um evento da timeline com os campos compartilhados."""
+
+    event: TimelineEvent = {
+        "time": timezone.localtime(event_time),
+        "event": message,
+        "details": details,
+        "edit_link": edit_link,
+        "model_name": instance.model_name,
+        "tags": instance.tags.all(),
+    }
+
+    if event_type is not None:
+        event["type"] = event_type
+
+    if duration is not None:
+        event["duration"] = duration
+
+    if include_time_since_prev:
+        event["time_since_prev"] = time_since_prev
+
+    return event
+
+
+def _get_duration(instance):
+    """Formata a duração somente quando ela for maior que zero."""
+
+    if instance.duration > timedelta(seconds=0):
+        return duration_string(instance.duration)
+
+    return None
+
+
+def _get_feeding_instances(min_date, max_date, child=None):
+    """Busca os feedings necessários para a timeline e para o cálculo anterior."""
+
+    yesterday = min_date - timedelta(days=1)
+
+    instances = Feeding.objects.filter(start__range=(yesterday, max_date)).order_by(
+        "start"
+    )
+
+    if child:
+        instances = instances.filter(child=child)
+
+    return instances
+
+
+def _get_feeding_details(instance):
+    """Monta os detalhes exibidos para um feeding."""
+
+    details = []
+
+    if instance.notes:
+        details.append(instance.notes)
+
+    if instance.amount:
+        details.append(_("Amount") + ": " + str(instance.amount))
+
+    return details
 
 
 def get_objects(date, child=None):
@@ -52,139 +140,147 @@ def _add_tummy_times(min_date, max_date, events, child=None):
     instances = TummyTime.objects.filter(start__range=(min_date, max_date)).order_by(
         "-start"
     )
+
     if child:
         instances = instances.filter(child=child)
+
     for instance in instances:
         details = []
+
         if instance.milestone:
             details.append(instance.milestone)
+
         edit_link = reverse("core:tummytime-update", args=[instance.id])
+
         events.append(
-            {
-                "time": timezone.localtime(instance.start),
-                "event": _("%(child)s started tummy time!")
+            _build_timeline_event(
+                instance=instance,
+                event_time=instance.start,
+                message=_("%(child)s started tummy time!")
                 % {"child": instance.child.first_name},
-                "details": details,
-                "edit_link": edit_link,
-                "model_name": instance.model_name,
-                "type": "start",
-                "tags": instance.tags.all(),
-            }
+                details=details,
+                edit_link=edit_link,
+                event_type="start",
+            )
         )
 
-        end = {
-            "time": timezone.localtime(instance.end),
-            "event": _("%(child)s finished tummy time.")
-            % {"child": instance.child.first_name},
-            "details": details,
-            "edit_link": edit_link,
-            "model_name": instance.model_name,
-            "type": "end",
-            "tags": instance.tags.all(),
-        }
-        if instance.duration > timedelta(seconds=0):
-            end["duration"] = duration_string(instance.duration)
-
-        events.append(end)
+        events.append(
+            _build_timeline_event(
+                instance=instance,
+                event_time=instance.end,
+                message=_("%(child)s finished tummy time.")
+                % {"child": instance.child.first_name},
+                details=details,
+                edit_link=edit_link,
+                event_type="end",
+                duration=_get_duration(instance),
+            )
+        )
 
 
 def _add_sleeps(min_date, max_date, events, child=None):
     instances = Sleep.objects.filter(start__range=(min_date, max_date)).order_by(
         "-start"
     )
+
     if child:
         instances = instances.filter(child=child)
+
     for instance in instances:
         details = []
+
         if instance.notes:
             details.append(instance.notes)
+
         edit_link = reverse("core:sleep-update", args=[instance.id])
+
         events.append(
-            {
-                "time": timezone.localtime(instance.start),
-                "event": _("%(child)s fell asleep.")
+            _build_timeline_event(
+                instance=instance,
+                event_time=instance.start,
+                message=_("%(child)s fell asleep.")
                 % {"child": instance.child.first_name},
-                "details": details,
-                "edit_link": edit_link,
-                "model_name": instance.model_name,
-                "type": "start",
-                "tags": instance.tags.all(),
-            }
+                details=details,
+                edit_link=edit_link,
+                event_type="start",
+            )
         )
 
-        end = {
-            "time": timezone.localtime(instance.end),
-            "event": _("%(child)s woke up.") % {"child": instance.child.first_name},
-            "details": details,
-            "edit_link": edit_link,
-            "model_name": instance.model_name,
-            "type": "end",
-            "tags": instance.tags.all(),
-        }
-        if instance.duration > timedelta(seconds=0):
-            end["duration"] = duration_string(instance.duration)
-        events.append(end)
+        events.append(
+            _build_timeline_event(
+                instance=instance,
+                event_time=instance.end,
+                message=_("%(child)s woke up.") % {"child": instance.child.first_name},
+                details=details,
+                edit_link=edit_link,
+                event_type="end",
+                duration=_get_duration(instance),
+            )
+        )
 
 
 def _add_feedings(min_date, max_date, events, child=None):
-    # Ensure first feeding has a previous.
-    yesterday = min_date - timedelta(days=1)
+    instances = _get_feeding_instances(min_date, max_date, child)
     prev_start = None
 
-    instances = Feeding.objects.filter(start__range=(yesterday, max_date)).order_by(
-        "start"
-    )
-    if child:
-        instances = instances.filter(child=child)
     for instance in instances:
-        details = []
-        if instance.notes:
-            details.append(instance.notes)
         time_since_prev = None
+
         if prev_start:
-            time_since_prev = timesince.timesince(prev_start, now=instance.start)
+            time_since_prev = timesince.timesince(
+                prev_start,
+                now=instance.start,
+            )
+
         prev_start = instance.start
+
         if instance.start < min_date:
             continue
-        edit_link = reverse("core:feeding-update", args=[instance.id])
-        if instance.amount:
-            details.append(_("Amount") + ": " + str(instance.amount))
 
-        base_object = {
-            "time": timezone.localtime(instance.start),
-            "details": details,
-            "edit_link": edit_link,
-            "model_name": instance.model_name,
-            "tags": instance.tags.all(),
-        }
+        details = _get_feeding_details(instance)
+        edit_link = reverse("core:feeding-update", args=[instance.id])
 
         if instance.duration > timedelta(seconds=0):
-            start_event = {
-                **base_object,
-                "event": _("%(child)s started feeding.")
-                % {"child": instance.child.first_name},
-                "time_since_prev": time_since_prev,
-                "type": "start",
-            }
+            events.append(
+                _build_timeline_event(
+                    instance=instance,
+                    event_time=instance.start,
+                    message=_("%(child)s started feeding.")
+                    % {"child": instance.child.first_name},
+                    details=details,
+                    edit_link=edit_link,
+                    event_type="start",
+                    time_since_prev=time_since_prev,
+                    include_time_since_prev=True,
+                )
+            )
 
-            end_event = {
-                **base_object,
-                "time": timezone.localtime(instance.end),
-                "event": _("%(child)s finished feeding.")
-                % {"child": instance.child.first_name},
-                "type": "end",
-                "duration": duration_string(instance.duration),
-            }
+            events.append(
+                _build_timeline_event(
+                    instance=instance,
+                    event_time=instance.end,
+                    message=_("%(child)s finished feeding.")
+                    % {"child": instance.child.first_name},
+                    details=details,
+                    edit_link=edit_link,
+                    event_type="end",
+                    duration=duration_string(instance.duration),
+                )
+            )
 
-            events.extend([start_event, end_event])
         else:
-            feed_event = {
-                **base_object,
-                "event": _("%(child)s had a feeding.")
-                % {"child": instance.child.first_name},
-                "time_since_prev": time_since_prev,
-            }
-            events.append(feed_event)
+            events.append(
+                _build_timeline_event(
+                    instance=instance,
+                    event_time=instance.start,
+                    message=_("%(child)s had a feeding.")
+                    % {"child": instance.child.first_name},
+                    details=details,
+                    edit_link=edit_link,
+                    time_since_prev=time_since_prev,
+                    include_time_since_prev=True,
+                )
+            )
 
 
 def _add_diaper_changes(min_date, max_date, events, child):
