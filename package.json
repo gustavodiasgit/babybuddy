@@ -20,6 +20,7 @@
     }
   },
   "devDependencies": {
+    "@mermaid-js/mermaid-cli": "^11.16.0",
     "@popperjs/core": "^2.11.8",
     "bootstrap": "^5.3.8",
     "del": "^8.0.1",

@@ -1,0 +1,66 @@
+flowchart TB
+    User[Usuário / Navegador]
+    ApiClient[Aplicativo ou cliente da API]
+
+    subgraph BabyBuddy["Baby Buddy — Monólito modular Django"]
+        Router["Roteamento principal<br/>babybuddy/urls.py"]
+        Middleware["Middlewares<br/>autenticação, sessão, idioma e timezone"]
+
+        subgraph Web["Interface Web — MTV"]
+            CoreViews["Views e Forms<br/>core"]
+            Dashboard["Dashboard<br/>dashboard"]
+            Reports["Relatórios<br/>reports"]
+            Templates["Templates HTML"]
+            Static["CSS, JavaScript e imagens"]
+        end
+
+        subgraph RestAPI["API REST"]
+            ApiUrls["URLs da API"]
+            ApiViews["Views / ViewSets"]
+            Serializers["Serializers"]
+        end
+
+        subgraph Application["Lógica de aplicação"]
+            Timeline["Timeline<br/>core/timeline.py"]
+            Services["Utilitários e regras auxiliares"]
+        end
+
+        subgraph Domain["Domínio e persistência"]
+            Models["Models Django<br/>Child, Sleep, Feeding,<br/>TummyTime etc."]
+            ORM["Django ORM"]
+        end
+    end
+
+    Database[("Banco de dados<br/>SQLite ou PostgreSQL")]
+    Storage[("Arquivos locais ou S3")]
+
+    User --> Middleware
+    Middleware --> Router
+
+    Router --> CoreViews
+    Router --> Dashboard
+    Router --> Reports
+
+    CoreViews --> Timeline
+    Dashboard --> Timeline
+    Reports --> Models
+
+    CoreViews --> Models
+    Timeline --> Models
+
+    CoreViews --> Templates
+    Dashboard --> Templates
+    Reports --> Templates
+    Templates --> Static
+    Templates --> User
+
+    ApiClient --> Middleware
+    Router --> ApiUrls
+    ApiUrls --> ApiViews
+    ApiViews --> Serializers
+    Serializers --> Models
+    ApiViews --> ApiClient
+
+    Models --> ORM
+    ORM --> Database
+    Models --> Storage
