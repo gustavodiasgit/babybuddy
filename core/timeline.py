@@ -292,9 +292,9 @@ def _add_diaper_changes(min_date, max_date, events, child):
     for instance in instances:
         contents = []
         if instance.wet:
-            contents.append("💧")
+            contents.append("wet")
         if instance.solid:
-            contents.append("💩")
+            contents.append("solid")
         events.append(
             {
                 "time": timezone.localtime(instance.time),
