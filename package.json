@@ -22,6 +22,7 @@
   "devDependencies": {
     "@popperjs/core": "^2.11.8",
     "bootstrap": "^5.3.8",
+    "cypress": "^15.18.1",
     "del": "^8.0.1",
     "gulp": "^5.0.1",
     "gulp-all": "^1.1.0",
